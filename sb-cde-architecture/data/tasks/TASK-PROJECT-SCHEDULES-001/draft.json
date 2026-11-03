@@ -1,0 +1,373 @@
+{
+  "schemaVersion": 1,
+  "taskId": "TASK-PROJECT-SCHEDULES-001",
+  "featureId": "project-schedules",
+  "baseRevision": 0,
+  "status": "draft",
+  "implementationStatus": "in_progress",
+  "operations": [
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "FEATURE_PROJECT_SCHEDULES",
+        "type": "feature",
+        "name": "Графики проекта",
+        "description": "Локальная работа с базовыми и операционными версиями КСП без изменения архитектурной карты.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": { "scope": "local prototype" }
+      },
+      "reason": "Функциональность и два типа графика подтверждены пользователем."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "MODULE_SCHEDULE_IMPORTER",
+        "type": "module",
+        "name": "Импорт версий КСП",
+        "description": "Читает XML, сохраняет неизменяемый источник версии и выделяет исходные операции без формирования работ SB_CDE.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY", "E-SCHEDULES-USER-DECISION"],
+        "metadata": { "formats": "XML" }
+      },
+      "reason": "Исходный XML и его интерпретация должны быть разделены."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "API_PROJECT_SCHEDULES",
+        "type": "api",
+        "name": "Локальный API графиков проекта",
+        "description": "Создаёт логический график, добавляет базовые и операционные версии и читает их локальное представление.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": { "access": "local" }
+      },
+      "reason": "UI не пишет в файловое хранилище напрямую."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_PROJECT_SCHEDULE",
+        "type": "data_artifact",
+        "name": "График проекта",
+        "description": "Логический контейнер истории базовых и операционных версий графика.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": { "storage": "local JSON plus source XML" }
+      },
+      "reason": "Один график должен объединять версии, а не создаваться заново при каждом импорте."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_BASELINE_SCHEDULE_VERSION",
+        "type": "data_artifact",
+        "name": "Базовая версия графика",
+        "description": "Неизменяемый согласованный базис Б1, Б2 и далее.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": { "mutability": "immutable snapshot" }
+      },
+      "reason": "Новый базис создаётся отдельной версией и не переписывает историю."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_OPERATIONAL_SCHEDULE_VERSION",
+        "type": "data_artifact",
+        "name": "Операционная версия графика",
+        "description": "Неизменяемый снимок актуализации О1.1, О1.2 и далее, связанный с конкретной базовой версией.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": { "mutability": "immutable snapshot" }
+      },
+      "reason": "Операционные обновления образуют последовательность внутри текущего базиса."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SOURCE_SCHEDULE_OPERATION",
+        "type": "data_artifact",
+        "name": "Исходная операция КСП",
+        "description": "Запись XML Task с раздельными UID, ID, Spider_Code, WBS, показателями, исходным порядком и трассировкой до XML-узла.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY", "E-SCHEDULES-USER-DECISION", "E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": { "notEquivalentTo": "Работа SB_CDE" }
+      },
+      "reason": "XML Task нельзя автоматически считать укрупнённой работой."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SCHEDULE_PROJECT_METADATA",
+        "type": "data_artifact",
+        "name": "Метаданные версии графика",
+        "description": "Поля Project, словарь FieldID → Alias, ревизия, дата статуса и контрольная сумма исходного XML.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": { "scope": "per imported version" }
+      },
+      "reason": "Метаданные проекта относятся к версии источника и не подставляются в операции."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SOURCE_OPERATION_DEPENDENCY",
+        "type": "data_artifact",
+        "name": "Зависимость исходных операций",
+        "description": "Связь PredecessorLink с UID предшественника, типом, лагом и форматом лага.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": { "source": "Task/PredecessorLink" }
+      },
+      "reason": "В проверенном XML обнаружено 711 зависимостей, которые ранее терялись."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SCHEDULE_IMPORT_VALIDATION",
+        "type": "data_artifact",
+        "name": "Отчёт валидации импорта",
+        "description": "Контроль количества задач, UID, OutlineLevel, WBS, Alias, полноты показателей и SHA-256 источника.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": { "parserVersion": "2.0.0" }
+      },
+      "reason": "Каждая версия должна иметь воспроизводимый результат контроля импорта."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SB_CDE_WORK",
+        "type": "data_artifact",
+        "name": "Работа SB_CDE",
+        "description": "Укрупнённая сущность, которая должна формироваться из исходных операций по КФО и пространственной детализации.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": { "identity": "КФО + корпус + секция + этаж", "projectionStatus": "stub" }
+      },
+      "reason": "Понятие работы подтверждено, но правила её вычисления пока не утверждены."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SCHEDULE_WORK_INDICATORS",
+        "type": "data_artifact",
+        "name": "Показатели работы в версии",
+        "description": "Плановые, прогнозные и фактические сроки, объёмы и статусы работы в выбранной версии графика.",
+        "architectureState": "proposed",
+        "confidence": "unverified",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY", "E-SCHEDULES-USER-DECISION"],
+        "metadata": { "fieldMappingStatus": "not configured" }
+      },
+      "reason": "Группы показателей различаются, но точное сопоставление XML-полям ещё не определено."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_SCHEDULE_IMPORT_RULE",
+        "type": "decision",
+        "name": "Правила интерпретации и агрегации КСП",
+        "description": "Будущие правила КФО, WBS, пространственных атрибутов, агрегации и сопоставления показателей.",
+        "architectureState": "unknown",
+        "confidence": "unverified",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY"],
+        "metadata": { "status": "open questions" }
+      },
+      "reason": "Неутверждённые правила представлены явным пробелом, а не выдуманной логикой."
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_FEATURE_USES_SCHEDULE_IMPORTER",
+        "sourceId": "FEATURE_PROJECT_SCHEDULES",
+        "targetId": "MODULE_SCHEDULE_IMPORTER",
+        "type": "depends_on",
+        "label": "использует импорт версий",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_SCHEDULE_API_PROVIDES_SCHEDULE",
+        "sourceId": "API_PROJECT_SCHEDULES",
+        "targetId": "DATA_PROJECT_SCHEDULE",
+        "type": "provides",
+        "label": "предоставляет график и историю версий",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_SCHEDULE_CONTAINS_BASELINE",
+        "sourceId": "DATA_PROJECT_SCHEDULE",
+        "targetId": "DATA_BASELINE_SCHEDULE_VERSION",
+        "type": "contains",
+        "label": "содержит базовые версии",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_SCHEDULE_CONTAINS_OPERATIONAL",
+        "sourceId": "DATA_PROJECT_SCHEDULE",
+        "targetId": "DATA_OPERATIONAL_SCHEDULE_VERSION",
+        "type": "contains",
+        "label": "содержит операционные версии",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_OPERATIONAL_BASED_ON_BASELINE",
+        "sourceId": "DATA_OPERATIONAL_SCHEDULE_VERSION",
+        "targetId": "DATA_BASELINE_SCHEDULE_VERSION",
+        "type": "depends_on",
+        "label": "основана на конкретном базисе",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-USER-DECISION"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IMPORTER_PRODUCES_SOURCE_OPERATIONS",
+        "sourceId": "MODULE_SCHEDULE_IMPORTER",
+        "targetId": "DATA_SOURCE_SCHEDULE_OPERATION",
+        "type": "produces",
+        "label": "выделяет без агрегации",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_SOURCE_OPERATION_MAPS_TO_WORK",
+        "sourceId": "DATA_SOURCE_SCHEDULE_OPERATION",
+        "targetId": "DATA_SB_CDE_WORK",
+        "type": "maps_to",
+        "label": "будущая проекция",
+        "confidence": "unverified",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY"],
+        "metadata": { "implementation": "stub" }
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IMPORT_RULE_JUSTIFIES_MAPPING",
+        "sourceId": "DATA_SCHEDULE_IMPORT_RULE",
+        "targetId": "DATA_SB_CDE_WORK",
+        "type": "justified_by",
+        "label": "задаёт формирование работы",
+        "confidence": "unverified",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_WORK_HAS_VERSION_INDICATORS",
+        "sourceId": "DATA_SB_CDE_WORK",
+        "targetId": "DATA_SCHEDULE_WORK_INDICATORS",
+        "type": "related_to",
+        "label": "имеет показатели в выбранной версии",
+        "confidence": "unverified",
+        "evidenceIds": ["E-SCHEDULES-DOMAIN-SUMMARY"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_SCHEDULE_CONTAINS_PROJECT_METADATA",
+        "sourceId": "DATA_PROJECT_SCHEDULE",
+        "targetId": "DATA_SCHEDULE_PROJECT_METADATA",
+        "type": "contains",
+        "label": "хранит метаданные каждой версии",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_OPERATION_HAS_PREDECESSOR_DEPENDENCY",
+        "sourceId": "DATA_SOURCE_SCHEDULE_OPERATION",
+        "targetId": "DATA_SOURCE_OPERATION_DEPENDENCY",
+        "type": "related_to",
+        "label": "участвует в зависимости",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IMPORTER_PRODUCES_VALIDATION",
+        "sourceId": "MODULE_SCHEDULE_IMPORTER",
+        "targetId": "DATA_SCHEDULE_IMPORT_VALIDATION",
+        "type": "produces",
+        "label": "формирует контрольный отчёт",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-SCHEDULES-EXPORT-BUNDLE"],
+        "metadata": {}
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-SCHEDULES-DOMAIN-SUMMARY",
+      "kind": "source_document",
+      "label": "SB_CDE_v0.2.md — Графики проекта: работы, импорт КСП и версионность",
+      "locator": "приложенный документ от 09.10.2026",
+      "note": "Документ содержит решения, проверенные факты, предложения и открытые вопросы; статусы сохранены при интерпретации."
+    },
+    {
+      "id": "E-SCHEDULES-EXPORT-BUNDLE",
+      "kind": "source_document",
+      "label": "msproject_xml_full_export.zip — проверочный пакет разбора Microsoft Project XML",
+      "locator": "корень проекта, SHA-256 E0B128A18738046689E1D186D5964BF10AC059C967F8351D4A409E61F1C7B2D7",
+      "note": "Скрипт из архива не исполнялся. Его правила и готовые результаты использованы для независимой сверки TypeScript-импортёра с тем же down_PL_CON_13.xml."
+    },
+    {
+      "id": "E-SCHEDULES-USER-DECISION",
+      "kind": "decision",
+      "label": "Уточнение пользователя по типам и версиям графиков от 09.10.2026",
+      "note": "Подтверждены базовый и операционный типы, цепочки Б1/О1.1 и Б2/О2.1, разделение XML-операций и работ, а также временная заглушка формирования работ."
+    }
+  ],
+  "updatedAt": "2026-10-09T17:00:00+03:00",
+  "publishedRevision": null
+}
+

@@ -1,0 +1,16 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [ReferenceView_V1.2]'),'2;1');
+FILE_NAME('properties.ifc','2026-11-03T00:00:00',('Codex'),('SB'),'Codex','Codex','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Тестовый проект',$,$,$,$,$,$);
+#2=IFCBUILDINGELEMENTPROXY('1YvctVUKr0kugbFTf53O9L',$,'Тестовый элемент',$,$,$,$,$,.NOTDEFINED.);
+#3=IFCPROPERTYSINGLEVALUE('КФО',$,IFCTEXT('204.02.01.01'),$);
+#4=IFCPROPERTYSINGLEVALUE('SB_Корпус',$,IFCTEXT('Корпус А'),$);
+#5=IFCPROPERTYSINGLEVALUE('ADSK_Этаж',$,IFCTEXT('01'),$);
+#6=IFCPROPERTYSET('2YvctVUKr0kugbFTf53O9L',$,'Pset_SB',$,(#3,#4,#5));
+#7=IFCRELDEFINESBYPROPERTIES('3YvctVUKr0kugbFTf53O9L',$,$,$,(#2),#6);
+ENDSEC;
+END-ISO-10303-21;

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+*.log
+*.tsbuildinfo
+data/schedules/index.json
+data/schedules/*/
+!data/schedules/README.md
+

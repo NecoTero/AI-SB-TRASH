@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/ao-preview.mjs"],
+      "cwd": ".",
+      "port": 5173,
+      "autoPort": true,
+      "url": "http://127.0.0.1:${PORT}/",
+      "targetKind": "app"
+    }
+  ]
+}

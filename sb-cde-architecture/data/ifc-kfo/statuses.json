@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "defaultStatus": "unknown",
+  "statuses": [
+    {
+      "id": "completed",
+      "label": "Выполнено",
+      "color": "#22C55E",
+      "opacity": 1,
+      "order": 1
+    },
+    {
+      "id": "in_progress",
+      "label": "В работе",
+      "color": "#3B82F6",
+      "opacity": 1,
+      "order": 2
+    },
+    {
+      "id": "planned",
+      "label": "Запланировано",
+      "color": "#9CA3AF",
+      "opacity": 1,
+      "order": 3
+    },
+    {
+      "id": "unknown",
+      "label": "Неизвестно",
+      "color": "#FFFFFF",
+      "opacity": 0.4,
+      "order": 4
+    }
+  ]
+}

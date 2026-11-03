@@ -1,0 +1,214 @@
+/* Obsidian-inspired graph polish. Node positions remain presentation-only state. */
+:root {
+  --panel: #202023;
+  --line: #323138;
+  --muted: #8f8d98;
+}
+
+.shell { background: #1b1b1f; }
+header, footer { background: #222225; }
+.sidebar { background: linear-gradient(180deg, #202023, #1d1d20); }
+.graph-panel { background: #18181c; }
+.react-flow { background: radial-gradient(circle at 48% 42%, #29272f 0, #1d1c22 36%, #18181c 72%); }
+
+.brand-mark {
+  position: relative;
+  background: transparent;
+  box-shadow: none;
+}
+.brand-mark span {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a88bfa;
+  box-shadow: 0 0 10px #8f72ed88;
+}
+.brand-mark span:nth-child(1) { left: 4px; top: 12px; }
+.brand-mark span:nth-child(2) { left: 13px; top: 4px; }
+.brand-mark span:nth-child(3) { right: 3px; bottom: 4px; }
+.brand-mark::before, .brand-mark::after {
+  content: "";
+  position: absolute;
+  height: 1px;
+  transform-origin: left center;
+  background: #71649d;
+}
+.brand-mark::before { width: 13px; left: 8px; top: 13px; transform: rotate(-39deg); }
+.brand-mark::after { width: 14px; left: 16px; top: 10px; transform: rotate(57deg); }
+
+.layout-button {
+  pointer-events: auto;
+  margin-left: 8px;
+  height: 32px;
+  border: 1px solid #3c3a43;
+  background: #242329dd;
+  color: #a6a3af;
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 9px;
+  box-shadow: 0 5px 18px #0004;
+  backdrop-filter: blur(8px);
+  transition: border-color .16s, color .16s, background .16s;
+}
+.layout-button:hover { color: #e4e1eb; border-color: #5d566f; background: #2d2b33; }
+
+.knowledge-node { cursor: grab; }
+.react-flow__node.dragging .knowledge-node { cursor: grabbing; }
+.node-halo {
+  position: absolute;
+  left: calc(var(--node-size) * -.45);
+  top: calc(var(--node-size) * -.45);
+  width: calc(var(--node-size) * 1.9);
+  height: calc(var(--node-size) * 1.9);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--node-color) 0, transparent 68%);
+  opacity: 0;
+  transform: scale(.7);
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+}
+.knowledge-node:hover .node-halo, .knowledge-node.related .node-halo { opacity: .14; transform: scale(1); }
+.knowledge-node.selected .node-halo { opacity: .28; transform: scale(1.1); animation: node-breathe 2.4s ease-in-out infinite; }
+.react-flow__node.dragging { z-index: 10 !important; }
+.react-flow__node.dragging .node-dot { transform: scale(1.42); box-shadow: 0 0 0 2px #f1eff8, 0 0 24px var(--node-color); }
+.knowledge-handle {
+  width: 1px !important;
+  min-width: 1px !important;
+  height: 1px !important;
+  min-height: 1px !important;
+  border: 0 !important;
+  background: transparent !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.react-flow__edges { z-index: 0; }
+.react-flow__edge-path {
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px #9e92cc44);
+  transition: stroke .2s, opacity .2s;
+}
+.react-flow__edge-text {
+  fill: #f2eff8 !important;
+  paint-order: stroke;
+  stroke: #18181c;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.layout-hint { color: #a99ce7; text-transform: uppercase; letter-spacing: .065em; }
+.readonly { border-color: #514b62; color: #bdb3e8; background: #2d2939; }
+.sidebar-note { border: 1px solid #33313a; background: #25242a; }
+.notice { background: #27252f; }
+.search { background: #242329e8; }
+.react-flow__controls-button, .react-flow__minimap { background: #242329; }
+.graph-panel .react-flow__minimap {
+  left: 14px !important;
+  right: auto !important;
+  bottom: 14px !important;
+  width: 144px !important;
+  height: 92px !important;
+  padding: 0;
+  overflow: hidden;
+  contain: paint;
+}
+.graph-panel .react-flow__minimap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.graph-panel .react-flow__controls {
+  left: auto !important;
+  right: 14px !important;
+  bottom: 14px !important;
+}
+
+@keyframes node-breathe {
+  0%, 100% { filter: blur(0); opacity: .2; }
+  50% { filter: blur(2px); opacity: .34; }
+}
+
+@media (max-width: 1180px) {
+  .layout-button span { display: none; }
+}
+
+/* Semantic graph vocabulary: shape denotes family, color denotes exact type. */
+.knowledge-node .node-dot {
+  border-radius: 4px;
+}
+.knowledge-node.shape-component .node-dot {
+  border-radius: 5px;
+}
+.knowledge-node.shape-process .node-dot,
+.type-marker.shape-process,
+.entity-shape.shape-process {
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  border-radius: 0;
+}
+.knowledge-node.shape-document .node-dot,
+.type-marker.shape-document,
+.entity-shape.shape-document {
+  clip-path: polygon(0 0, 72% 0, 100% 28%, 100% 100%, 0 100%);
+  border-radius: 1px;
+}
+.knowledge-node.shape-data .node-dot,
+.type-marker.shape-data,
+.entity-shape.shape-data {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  border-radius: 0;
+}
+.knowledge-node.shape-reference .node-dot,
+.type-marker.shape-reference,
+.entity-shape.shape-reference {
+  border-radius: 999px;
+  width: calc(var(--node-size) * 1.45);
+}
+.type-marker.shape-component,
+.entity-shape.shape-component { border-radius: 4px; }
+
+.legend-line.flow { background: #aaa3c4; }
+.legend-line.structure {
+  height: 0;
+  background: transparent;
+  border-top: 1px dashed #aaa3c4;
+}
+.legend-line.dependency {
+  height: 0;
+  background: transparent;
+  border-top: 1px dotted #aaa3c4;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #ddd6ff !important;
+  filter: drop-shadow(0 0 5px #9e92ccaa);
+}
+.entity-title > i.entity-shape { border-radius: 5px; }
+.relation-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 13px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.relation-title > i { flex: 0 0 28px; }
+.relation-title h2 { margin: 0; color: #e0dfe6; font-size: 14px; }
+.relation-title span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+.relation-list {
+  display: grid;
+  gap: 4px;
+  padding: 0 12px 12px;
+}
+.relation-list button {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  border: 1px solid #33313a;
+  border-radius: 5px;
+  background: #242329;
+  color: #cfccd7;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+.relation-list button:hover { border-color: #5d566f; background: #2d2b33; }
+.relation-list small { color: #9992b4; font-size: 8px; text-transform: uppercase; letter-spacing: .04em; }
+.relation-list span { font-size: 10px; }

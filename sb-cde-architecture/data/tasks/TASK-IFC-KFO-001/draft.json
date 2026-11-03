@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "taskId": "TASK-IFC-KFO-001",
+  "featureId": "ifc-kfo-bindings",
+  "baseRevision": 0,
+  "status": "draft",
+  "implementationStatus": "completed",
+  "operations": [
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "MODULE_IFC_KFO_BINDING_GENERATOR",
+        "type": "module",
+        "name": "Генератор привязки IFC к КФО",
+        "description": "Локально вычисляет производную классификацию IFC-элементов и связывает пространственные группы с операциями сохранённого XML-графика.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-USER-REQUEST"],
+        "metadata": { "execution": "manual local command" }
+      },
+      "reason": "Привязка должна воспроизводимо пересобираться при изменении модели или версии графика."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_IFC_KFO_BINDINGS",
+        "type": "data_artifact",
+        "name": "Привязка IFC-элементов к работам КФО",
+        "description": "Дерево КФО, корпуса, секции, этажа, работы, операций XML и IFC-элементов со сроками, статусами и уровнями уверенности.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-USER-REQUEST", "E-IFC-KFO-LOCAL-SOURCES"],
+        "metadata": { "path": "data/ifc-kfo/bindings.json", "schemaVersion": "1" }
+      },
+      "reason": "Пользователь запросил сохранённую привязку ID элементов к КФО и пространственным работам."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "DATA_IFC_STATUS_CATALOG",
+        "type": "data_artifact",
+        "name": "Справочник статусов IFC",
+        "description": "Отдельный локальный справочник подписей, цветов, прозрачности и порядка отображения четырёх визуальных статусов работ.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-STATUS-VIEWER-REQUEST"],
+        "metadata": { "path": "data/ifc-kfo/statuses.json", "schemaVersion": "1", "storage": "local JSON database" }
+      },
+      "reason": "Пользователь запросил отдельную сущность-базу статусов с управляемой цветовой схемой."
+    },
+    {
+      "op": "createEntity",
+      "entity": {
+        "id": "MODULE_IFC_STATUS_VIEWER",
+        "type": "module",
+        "name": "Статусная визуализация IFC",
+        "description": "Read-only отображение связанных геометрических элементов с окраской по статусу работы и временным ползунком.",
+        "architectureState": "proposed",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-STATUS-VIEWER-REQUEST"],
+        "metadata": { "route": "/ifc", "writeAccess": "none" }
+      },
+      "reason": "Статус КФО должен быть виден непосредственно на геометрии модели."
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IFC_KFO_GENERATOR_PRODUCES_BINDINGS",
+        "sourceId": "MODULE_IFC_KFO_BINDING_GENERATOR",
+        "targetId": "DATA_IFC_KFO_BINDINGS",
+        "type": "produces",
+        "label": "формирует производное представление",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-USER-REQUEST"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IFC_BINDINGS_USES_STATUS_CATALOG",
+        "sourceId": "DATA_IFC_KFO_BINDINGS",
+        "targetId": "DATA_IFC_STATUS_CATALOG",
+        "type": "references",
+        "label": "связывает work.status со statuses[].id",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-STATUS-VIEWER-REQUEST"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IFC_STATUS_VIEWER_READS_BINDINGS",
+        "sourceId": "MODULE_IFC_STATUS_VIEWER",
+        "targetId": "DATA_IFC_KFO_BINDINGS",
+        "type": "reads",
+        "label": "получает element expressId, сроки и статус",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-STATUS-VIEWER-REQUEST"],
+        "metadata": {}
+      }
+    },
+    {
+      "op": "createRelation",
+      "relation": {
+        "id": "REL_IFC_STATUS_VIEWER_READS_STATUS_CATALOG",
+        "sourceId": "MODULE_IFC_STATUS_VIEWER",
+        "targetId": "DATA_IFC_STATUS_CATALOG",
+        "type": "reads",
+        "label": "получает цвета и прозрачность",
+        "confidence": "confirmed",
+        "evidenceIds": ["E-IFC-KFO-STATUS-VIEWER-REQUEST"],
+        "metadata": {}
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-IFC-KFO-USER-REQUEST",
+      "kind": "decision",
+      "label": "Запрос пользователя на сохранение привязки IFC → КФО от 14.10.2026",
+      "note": "Подтверждена требуемая иерархия КФО → корпус/секция → этаж → элементы, сроки и статус."
+    },
+    {
+      "id": "E-IFC-KFO-LOCAL-SOURCES",
+      "kind": "source_document",
+      "label": "RD_KR_04-08.ifc и down_PL_CON_13.xml",
+      "locator": "локальные управляемые источники проекта",
+      "note": "Прямой код КФО в IFC отсутствует; производные и гипотетические правила помечены явно."
+    },
+    {
+      "id": "E-IFC-KFO-STATUS-VIEWER-REQUEST",
+      "kind": "decision",
+      "label": "Запрос пользователя на отдельную базу статусов и временную окраску IFC Viewer от 14.10.2026",
+      "note": "Цвета подтверждены пользователем; ползунок реализован как дата просмотра статуса."
+    }
+  ],
+  "updatedAt": "2026-10-14T00:00:00+03:00",
+  "publishedRevision": null
+}
