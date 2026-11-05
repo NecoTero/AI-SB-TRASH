@@ -47,6 +47,7 @@ export async function readIfc(filePath, { onProgress } = {}) {
   const modelID = ifc.OpenModel(new Uint8Array(fs.readFileSync(filePath)));
   try {
     const ids = ifc.GetLineIDsWithType(modelID, IFCELEMENT, true), elements = [];
+    const typePropertySets = new Map();
     const total = ids.size();
     onProgress?.({ stage: 'properties', completed: 0, total });
     for (let index = 0; index < ids.size(); index++) {
@@ -56,7 +57,21 @@ export async function readIfc(filePath, { onProgress } = {}) {
       add(props, 'ObjectType', line.ObjectType);
       add(props, 'Tag', line.Tag);
       add(props, 'PredefinedType', line.PredefinedType);
-      const propertySets = await ifc.properties.getPropertySets(modelID, expressID, true, true);
+      const propertySets = await ifc.properties.getPropertySets(modelID, expressID, true, false);
+      const types = await ifc.properties.getTypeProperties(modelID, expressID, false);
+      for (const type of types) {
+        const typeId = type?.expressID;
+        let cached = typePropertySets.get(typeId);
+        if (!cached) {
+          const references = Array.isArray(type?.HasPropertySets) ? type.HasPropertySets : [];
+          cached = references.map(reference => {
+            const propertySetId = reference?.value ?? reference?.expressID;
+            return propertySetId ? ifc.GetLine(modelID, propertySetId, true) : null;
+          }).filter(Boolean);
+          if (typeId) typePropertySets.set(typeId, cached);
+        }
+        propertySets.push(...cached);
+      }
       propertySets.forEach(propertySet => collectProperty(propertySet, props));
       elements.push({ id: String(expressID), type: line.constructor?.name || 'IfcElement', props });
       if ((index + 1) % 25 === 0 || index + 1 === total) {

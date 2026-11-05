@@ -1,4 +1,4 @@
-param(
+﻿param(
     [datetime]$FactReportDate = [datetime]'2026-09-27',
     [string]$OutputFolder = 'заполненные шаблоны'
 )
@@ -58,6 +58,12 @@ function Get-Floor([string[]]$lineage) {
     return $null
 }
 
+function Get-Stage([string]$level2, [hashtable]$stageMap) {
+    $key = $level2.Trim()
+    if ($stageMap.ContainsKey($key)) { return $stageMap[$key] }
+    return '-'
+}
+
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 $excel = $null
 
@@ -78,6 +84,13 @@ try {
         try {
             $sourceSheet = $sourceBook.Worksheets.Item(1)
             $targetSheet = $targetBook.Worksheets.Item('Шаблон')
+            $stageSheet = $targetBook.Worksheets.Item('Справочник')
+            $stageMap = @{}
+            for ($stageRow = 4; $stageRow -le $stageSheet.UsedRange.Rows.Count; $stageRow++) {
+                $level2Value = ([string]$stageSheet.Cells.Item($stageRow, 1).Value2).Trim()
+                $stageValue = ([string]$stageSheet.Cells.Item($stageRow, 2).Value2).Trim()
+                if ($level2Value) { $stageMap[$level2Value] = $stageValue }
+            }
             $sourceLastRow = $sourceSheet.UsedRange.Rows.Count
             $sourceLastColumn = $sourceSheet.UsedRange.Columns.Count
             $sourceDataRowCount = $sourceLastRow - 2
@@ -158,7 +171,7 @@ try {
                 }
             }
 
-            $targetValues = New-Object 'object[,]' $dataRowCount, 36
+            $targetValues = New-Object 'object[,]' $dataRowCount, 37
             for ($targetRowOffset = 0; $targetRowOffset -lt $dataRowCount; $targetRowOffset++) {
                 $sourceOffset = $selectedOffsets[$targetRowOffset]
                 $sourceRow = $sourceLowerRow + $sourceOffset
@@ -188,28 +201,31 @@ try {
                     $targetValues[$targetRowOffset, 24] = $projectName
                     $lineage.Add($projectName)
                 }
+                $level2Name = $null
                 for ($level = 1; $level -le 9; $level++) {
                     $levelBsc = Get-LevelBsc $bsc $level
                     if ($levelBsc -and $nodes.ContainsKey($levelBsc)) {
                         $levelName = [string]$nodes[$levelBsc].Name
                         $targetValues[$targetRowOffset, (24 + $level)] = $levelName
+                        if ($level -eq 2) { $level2Name = $levelName }
                         $lineage.Add($levelName)
                     }
                 }
                 $targetValues[$targetRowOffset, 34] = Get-Corpus $lineage.ToArray()
                 $targetValues[$targetRowOffset, 35] = Get-Floor $lineage.ToArray()
+                $targetValues[$targetRowOffset, 36] = Get-Stage $level2Name $stageMap
             }
 
             $targetSheet.Rows.Item(4).Copy()
             $formatRange = $targetSheet.Range(
                 $targetSheet.Cells.Item(4, 1),
-                $targetSheet.Cells.Item($targetLastRow, 36)
+                $targetSheet.Cells.Item($targetLastRow, 37)
             )
             $formatRange.PasteSpecial(-4122) | Out-Null
             $excel.CutCopyMode = 0
             $targetRange = $targetSheet.Range(
                 $targetSheet.Cells.Item(4, 1),
-                $targetSheet.Cells.Item($targetLastRow, 36)
+                $targetSheet.Cells.Item($targetLastRow, 37)
             )
             $targetSheet.Range("H4:H$targetLastRow").NumberFormat = '@'
             $targetRange.Value2 = $targetValues
@@ -221,6 +237,7 @@ try {
             foreach ($column in @('Y','Z','AA','AB','AC','AD','AE','AF','AG','AH')) {
                 $targetSheet.Columns.Item($column).ColumnWidth = 35
             }
+            $targetSheet.Columns.Item('AK').ColumnWidth = 28
             $targetBook.Save() | Out-Null
 
             $corpusCount = 0

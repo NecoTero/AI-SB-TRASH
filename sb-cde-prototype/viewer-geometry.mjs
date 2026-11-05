@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Matrix3, Matrix4 } from 'three';
 import { IfcAPI } from 'web-ifc';
+import { fileContentHash } from './file-content-hash.mjs';
 
 const CACHE_VERSION = 2;
 const FORMAT_VERSION = 1;
@@ -11,27 +12,25 @@ const pending = new Map();
 
 const safePart = value => String(value).replace(/[^a-zA-Z0-9._-]/g, '_');
 
-function cachePaths(cacheRoot, modelId, version) {
-  const base = path.join(cacheRoot, `${safePart(modelId)}-v${Number(version)}.geometry-v${CACHE_VERSION}`);
+function cachePaths(cacheRoot, sourceHash) {
+  const base = path.join(cacheRoot, `${safePart(sourceHash)}.geometry-v${CACHE_VERSION}`);
   return { binary: `${base}.bin`, metadata: `${base}.json` };
 }
 
-async function readValidCache(selection, cacheRoot) {
-  const source = await stat(selection.full);
-  const paths = cachePaths(cacheRoot, selection.id, selection.version);
+async function readValidCache(cacheRoot, sourceHash) {
+  const paths = cachePaths(cacheRoot, sourceHash);
   try {
     const metadata = JSON.parse(await readFile(paths.metadata, 'utf8'));
     const binary = await stat(paths.binary);
     if (
       metadata.version === CACHE_VERSION
-      && metadata.sourceSize === source.size
-      && metadata.sourceMtimeMs === source.mtimeMs
+      && metadata.sourceHash === sourceHash
       && metadata.size === binary.size
     ) {
       return {
         ...metadata,
         filePath: paths.binary,
-        etag: `"viewer-${CACHE_VERSION}-${source.size}-${Math.round(source.mtimeMs)}"`,
+        etag: `"viewer-${CACHE_VERSION}-${sourceHash}"`,
       };
     }
   } catch {
@@ -41,7 +40,8 @@ async function readValidCache(selection, cacheRoot) {
 }
 
 async function buildCache(selection, cacheRoot) {
-  const cached = await readValidCache(selection, cacheRoot);
+  const sourceHash = await fileContentHash(selection.full, selection.stat);
+  const cached = await readValidCache(cacheRoot, sourceHash);
   if (cached) return cached;
 
   const sourceStat = await stat(selection.full);
@@ -172,13 +172,14 @@ async function buildCache(selection, cacheRoot) {
       indexOffset += geometry.indices.length;
     }
 
-    const paths = cachePaths(cacheRoot, selection.id, selection.version);
+    const paths = cachePaths(cacheRoot, sourceHash);
     await mkdir(path.dirname(paths.binary), { recursive: true });
     const temporaryBinary = `${paths.binary}.${process.pid}.tmp`;
     const temporaryMetadata = `${paths.metadata}.${process.pid}.tmp`;
     await writeFile(temporaryBinary, new Uint8Array(buffer));
     const metadata = {
       version: CACHE_VERSION,
+      sourceHash,
       sourceSize: sourceStat.size,
       sourceMtimeMs: sourceStat.mtimeMs,
       size: buffer.byteLength,
@@ -193,7 +194,7 @@ async function buildCache(selection, cacheRoot) {
     return {
       ...metadata,
       filePath: paths.binary,
-      etag: `"viewer-${CACHE_VERSION}-${sourceStat.size}-${Math.round(sourceStat.mtimeMs)}"`,
+      etag: `"viewer-${CACHE_VERSION}-${sourceHash}"`,
     };
   } finally {
     if (ifcApi.IsModelOpen(openedModelId)) ifcApi.CloseModel(openedModelId);
@@ -201,8 +202,8 @@ async function buildCache(selection, cacheRoot) {
   }
 }
 
-export function ensureViewerGeometry(selection, cacheRoot) {
-  const key = `${selection.id}:${selection.version}:${selection.stat.size}:${selection.stat.mtimeMs}`;
+export async function ensureViewerGeometry(selection, cacheRoot) {
+  const key = await fileContentHash(selection.full, selection.stat);
   let task = pending.get(key);
   if (!task) {
     task = buildCache(selection, cacheRoot).finally(() => pending.delete(key));

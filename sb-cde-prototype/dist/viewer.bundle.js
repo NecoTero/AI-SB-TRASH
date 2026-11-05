@@ -28829,6 +28829,7 @@ void main() {
     completed: [30, 201, 126, 255],
     inProgress: [48, 137, 235, 255],
     notStarted: [188, 199, 205, 92],
+    unlinked: [151, 163, 169, 105],
     hidden: [0, 0, 0, 0]
   };
   var iso = (date) => /* @__PURE__ */ new Date(`${date}T00:00:00Z`);
@@ -28913,6 +28914,16 @@ void main() {
   function offsetDays(date, days) {
     return toIso(new Date(iso(date).getTime() + days * DAY));
   }
+  function offsetMonths(date, months = 1) {
+    const source = iso(date);
+    const target = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + months, 1));
+    const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+    target.setUTCDate(Math.min(source.getUTCDate(), lastDay));
+    return toIso(target);
+  }
+  function formatMonth(date) {
+    return iso(date).toLocaleDateString("ru-RU", { month: "short", year: "2-digit", timeZone: "UTC" }).replace(" \u0433.", "");
+  }
   function statusKey(status) {
     if (status === "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043E") return "completed";
     if (status === "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435") return "inProgress";
@@ -28927,7 +28938,9 @@ void main() {
       this.models = payload.models;
       this.workMap = buildWorkMap(this.version.ops);
       this.modelViews = [];
-      this.hiddenStates = /* @__PURE__ */ new Set();
+      this.hiddenStates = /* @__PURE__ */ new Set(["unlinked"]);
+      this.hiddenModels = /* @__PURE__ */ new Set();
+      this.expandedWorks = /* @__PURE__ */ new Set();
       this.selectedDate = this.version.date;
       this.step = 1;
       this.playTimer = null;
@@ -28935,12 +28948,6 @@ void main() {
       this.renderFrame = 0;
       this.fullBounds = timelineBounds(this.version.ops, this.version.date);
       this.bounds = { ...this.fullBounds };
-      this.linkedCodes = /* @__PURE__ */ new Set();
-      for (const model of this.models) {
-        for (const code of modelElementCodes(model, payload.traits).values()) {
-          if (code && this.workMap.has(C.normalize(code))) this.linkedCodes.add(C.normalize(code));
-        }
-      }
     }
     async open() {
       document.body.classList.add("viewer-open");
@@ -28957,7 +28964,6 @@ void main() {
         this.applyStatuses();
         this.root.querySelector(".viewer-loading").hidden = true;
         this.root.querySelector(".viewer-ready").hidden = false;
-        this.updateStats();
       } catch (error2) {
         if (!this.active) return;
         const loading = this.root.querySelector(".viewer-loading");
@@ -28966,34 +28972,43 @@ void main() {
       }
     }
     template() {
-      const selectedNames = this.models.map((model) => model.name.replace(/\.ifc$/i, "")).join(", ");
+      const eye = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>`;
       return `<section class="viewer-screen" aria-label="\u0421\u0442\u0430\u0442\u0443\u0441\u043D\u0430\u044F \u043C\u043E\u0434\u0435\u043B\u044C \u0421\u041C\u0420">
       <header class="viewer-header">
         <div class="viewer-brand"><b>\u041A\u0421\u0423\u041F</b> BIM</div>
         <div class="viewer-heading"><strong>\u0421\u0442\u0430\u0442\u0443\u0441\u043D\u0430\u044F \u043C\u043E\u0434\u0435\u043B\u044C \u0421\u041C\u0420</strong><span>\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u0430</span></div>
-        <div class="viewer-context"><span>\u0413\u0440\u0430\u0444\u0438\u043A \u0421\u041C\u0420 <b>v${this.version.n}</b></span><span>\u041E\u0442\u0447\u0451\u0442\u043D\u0430\u044F \u0434\u0430\u0442\u0430 <b>${formatDate(this.version.date)}</b></span><span title="${esc(selectedNames)}">\u041C\u043E\u0434\u0435\u043B\u0435\u0439 <b>${this.models.length}</b></span></div>
+        <div class="viewer-context"><span>\u0413\u0440\u0430\u0444\u0438\u043A \u0421\u041C\u0420 <b>v${this.version.n}</b></span><span>\u041E\u0442\u0447\u0451\u0442\u043D\u0430\u044F \u0434\u0430\u0442\u0430 <b>${formatDate(this.version.date)}</b></span></div>
         <button class="viewer-close" type="button" aria-label="\u0417\u0430\u043A\u0440\u044B\u0442\u044C 3D" title="\u0412\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u043A \u0440\u0435\u0435\u0441\u0442\u0440\u0443">\xD7</button>
       </header>
       <div class="viewer-workspace">
         <div class="viewer-canvas" aria-label="\u041E\u0431\u043B\u0430\u0441\u0442\u044C 3D-\u043C\u043E\u0434\u0435\u043B\u0438"></div>
+        <aside class="viewer-model-tree" aria-label="\u0414\u0435\u0440\u0435\u0432\u043E \u043C\u043E\u0434\u0435\u043B\u0435\u0439">
+          <button type="button" class="viewer-model-tree-head" data-model-tree-toggle aria-expanded="true" aria-label="\u0421\u043A\u0440\u044B\u0442\u044C \u0434\u0435\u0440\u0435\u0432\u043E \u043C\u043E\u0434\u0435\u043B\u0435\u0439" title="\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0434\u0435\u0440\u0435\u0432\u043E \u043C\u043E\u0434\u0435\u043B\u0435\u0439"><span class="tree-chevron">\u2039</span><strong>\u041C\u043E\u0434\u0435\u043B\u0438</strong></button>
+          <div class="viewer-model-list">${this.models.map((model) => `<div class="viewer-model-row" data-model-row-id="${esc(model.id)}"><span class="tree-branch"></span><span class="viewer-model-name" title="${esc(model.name)}">${esc(model.name.replace(/\.ifc$/i, ""))}</span><small>v${model.selected}</small><button type="button" data-model-visibility="${esc(model.id)}" aria-pressed="true" aria-label="\u0421\u043A\u0440\u044B\u0442\u044C \u043C\u043E\u0434\u0435\u043B\u044C ${esc(model.name)}" title="\u0421\u043A\u0440\u044B\u0442\u044C \u043C\u043E\u0434\u0435\u043B\u044C">${eye}</button></div>`).join("")}</div>
+        </aside>
         <div class="viewer-tools" role="toolbar" aria-label="\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043A\u0430\u043C\u0435\u0440\u043E\u0439">
           <button data-viewer-action="zoom-in" title="\u041F\u0440\u0438\u0431\u043B\u0438\u0437\u0438\u0442\u044C">+</button>
           <button data-viewer-action="zoom-out" title="\u041E\u0442\u0434\u0430\u043B\u0438\u0442\u044C">\u2212</button>
-          <button data-viewer-action="fit">\u0412\u043F\u0438\u0441\u0430\u0442\u044C</button>
-          <button data-viewer-action="iso">3D</button>
-          <button data-viewer-action="top">\u0421\u0432\u0435\u0440\u0445\u0443</button>
-          <button data-viewer-action="front">\u0421\u043F\u0435\u0440\u0435\u0434\u0438</button>
-          <button data-viewer-action="right">\u0421\u043F\u0440\u0430\u0432\u0430</button>
+          <button data-viewer-action="fit" title="\u0412\u043F\u0438\u0441\u0430\u0442\u044C \u0432\u0438\u0434\u0438\u043C\u0443\u044E \u043C\u043E\u0434\u0435\u043B\u044C \u0432 \u044D\u043A\u0440\u0430\u043D">\u0412\u043F\u0438\u0441\u0430\u0442\u044C</button>
+          <button data-viewer-action="iso" title="\u0418\u0437\u043E\u043C\u0435\u0442\u0440\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0432\u0438\u0434">3D</button>
+          <button data-viewer-action="top" title="\u0412\u0438\u0434 \u0441\u0432\u0435\u0440\u0445\u0443">\u0421\u0432\u0435\u0440\u0445\u0443</button>
+          <button data-viewer-action="front" title="\u0412\u0438\u0434 \u0441\u043F\u0435\u0440\u0435\u0434\u0438">\u0421\u043F\u0435\u0440\u0435\u0434\u0438</button>
+          <button data-viewer-action="right" title="\u0412\u0438\u0434 \u0441\u043F\u0440\u0430\u0432\u0430">\u0421\u043F\u0440\u0430\u0432\u0430</button>
         </div>
+        <div class="viewer-side-panels">
         <aside class="viewer-legend">
-          <div class="viewer-legend-head"><div><small>\u0421\u0442\u0430\u0442\u0443\u0441\u043D\u0430\u044F \u043C\u043E\u0434\u0435\u043B\u044C</small><strong>\u0421\u0442\u0430\u0442\u0443\u0441 \u0421\u041C\u0420</strong></div><span class="viewer-ready" hidden>\u25CF</span></div>
+          <div class="viewer-legend-head"><strong>\u0421\u0442\u0430\u0442\u0443\u0441 \u0421\u041C\u0420</strong><span class="viewer-ready" hidden>\u25CF</span><button type="button" class="viewer-legend-toggle" data-legend-toggle aria-expanded="true" aria-label="\u0421\u043A\u0440\u044B\u0442\u044C \u043B\u0435\u0433\u0435\u043D\u0434\u0443 \u0441\u0442\u0430\u0442\u0443\u0441\u043E\u0432" title="\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u043B\u0435\u0433\u0435\u043D\u0434\u0443">\u203A</button></div>
           <button data-state="completed"><i class="completed"></i><span>\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043E</span><b id="count-completed">0</b></button>
           <button data-state="inProgress"><i class="in-progress"></i><span>\u0412 \u0440\u0430\u0431\u043E\u0442\u0435</span><b id="count-inProgress">0</b></button>
           <button data-state="notStarted"><i class="not-started"></i><span>\u041D\u0435 \u043D\u0430\u0447\u0430\u0442\u043E</span><b id="count-notStarted">0</b></button>
-          <div class="viewer-hidden-note"><i></i><span>\u0411\u0435\u0437 \u041A\u0424\u041E \u0438\u043B\u0438 \u0441\u0432\u044F\u0437\u0438</span><b id="count-hidden">0</b></div>
+          <button data-state="unlinked" class="off"><i class="unlinked"></i><span>\u0411\u0435\u0437 \u041A\u0424\u041E \u0438\u043B\u0438 \u0441\u0432\u044F\u0437\u0438</span><b id="count-unlinked">0</b></button>
         </aside>
+        <aside class="viewer-current-works" aria-label="\u0422\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B">
+          <div class="viewer-current-works-head"><strong>\u0422\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B</strong><span class="viewer-current-work-count">0</span><button type="button" class="viewer-current-works-toggle" data-current-works-toggle aria-expanded="true" aria-label="\u0421\u043A\u0440\u044B\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B" title="\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5.5-6.5 6.5 6.5 6.5"></path></svg></button></div>
+          <div class="viewer-current-work-list"></div>
+        </aside>
+        </div>
         <div class="viewer-loading"><span class="viewer-spinner"></span><strong>\u041F\u043E\u0434\u0433\u043E\u0442\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u043C IFC-\u0433\u0435\u043E\u043C\u0435\u0442\u0440\u0438\u044E\u2026</strong><small id="viewer-load-progress">\u042D\u0442\u043E \u043C\u043E\u0436\u0435\u0442 \u0437\u0430\u043D\u044F\u0442\u044C \u0432\u0440\u0435\u043C\u044F \u043F\u0440\u0438 \u043F\u0435\u0440\u0432\u043E\u043C \u043E\u0442\u043A\u0440\u044B\u0442\u0438\u0438</small></div>
-        <div class="viewer-help">\u041B\u041A\u041C \u2014 \u0432\u0440\u0430\u0449\u0435\u043D\u0438\u0435 \xB7 \u041F\u041A\u041C \u2014 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0435\u043D\u0438\u0435 \xB7 \u043A\u043E\u043B\u0435\u0441\u043E \u2014 \u043C\u0430\u0441\u0448\u0442\u0430\u0431</div>
       </div>
       <section class="viewer-timeline" aria-label="\u0422\u0430\u0439\u043C\u043B\u0430\u0439\u043D \u0441\u0442\u0430\u0442\u0443\u0441\u043E\u0432">
         <div class="timeline-top">
@@ -29001,13 +29016,14 @@ void main() {
           <input id="timeline-date" type="date" value="${this.selectedDate}" aria-label="\u0414\u0430\u0442\u0430 \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0430">
           <button data-viewer-action="play" class="timeline-play" aria-label="\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0432\u043E\u0441\u043F\u0440\u043E\u0438\u0437\u0432\u0435\u0434\u0435\u043D\u0438\u0435">\u25B6</button>
           <div class="timeline-steps" aria-label="\u0428\u0430\u0433 \u0432\u043E\u0441\u043F\u0440\u043E\u0438\u0437\u0432\u0435\u0434\u0435\u043D\u0438\u044F">
-            <button data-step="1" class="active">1 \u0434\u0435\u043D\u044C</button><button data-step="3">3 \u0434\u043D\u044F</button><button data-step="7">1 \u043D\u0435\u0434\u0435\u043B\u044F</button>
+            <button data-step="1" class="active">1 \u0434\u0435\u043D\u044C</button><button data-step="3">3 \u0434\u043D\u044F</button><button data-step="7">1 \u043D\u0435\u0434\u0435\u043B\u044F</button><button data-step="month">1 \u043C\u0435\u0441\u044F\u0446</button>
           </div>
           <div class="timeline-spacer"></div>
           <button data-viewer-action="focus" class="timeline-focus">\u0424\u043E\u043A\u0443\u0441 \u043D\u0430 BIM</button>
           <button data-viewer-action="full" class="timeline-full" disabled>\u0412\u0435\u0441\u044C \u0433\u0440\u0430\u0444\u0438\u043A</button>
         </div>
         <div class="timeline-track-wrap">
+          <div class="timeline-grid" aria-hidden="true"></div>
           <div class="timeline-zones"><span class="timeline-fact"></span><span class="timeline-plan"></span><i class="timeline-report" title="\u041E\u0442\u0447\u0451\u0442\u043D\u0430\u044F \u0434\u0430\u0442\u0430"></i></div>
           <input id="timeline-range" type="range" min="0" max="1" value="0" aria-label="\u0414\u0430\u0442\u0430 \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0430 \u043D\u0430 \u0442\u0430\u0439\u043C\u043B\u0430\u0439\u043D\u0435">
           <div class="timeline-ticks"></div>
@@ -29022,10 +29038,57 @@ void main() {
       });
       this.root.querySelectorAll("[data-step]").forEach((button) => {
         button.onclick = () => {
-          this.step = Number(button.dataset.step);
+          this.step = button.dataset.step === "month" ? "month" : Number(button.dataset.step);
           this.root.querySelectorAll("[data-step]").forEach((item) => item.classList.toggle("active", item === button));
         };
       });
+      this.root.querySelectorAll("[data-model-visibility]").forEach((button) => {
+        button.onclick = () => {
+          const modelId = button.dataset.modelVisibility;
+          this.hiddenModels.has(modelId) ? this.hiddenModels.delete(modelId) : this.hiddenModels.add(modelId);
+          const visible = !this.hiddenModels.has(modelId);
+          button.classList.toggle("off", !visible);
+          button.setAttribute("aria-pressed", String(visible));
+          button.setAttribute("aria-label", `${visible ? "\u0421\u043A\u0440\u044B\u0442\u044C" : "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C"} \u043C\u043E\u0434\u0435\u043B\u044C`);
+          button.title = visible ? "\u0421\u043A\u0440\u044B\u0442\u044C \u043C\u043E\u0434\u0435\u043B\u044C" : "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u043C\u043E\u0434\u0435\u043B\u044C";
+          const view = this.modelViews.find((candidate) => candidate.model.id === modelId);
+          if (view) view.mesh.visible = visible;
+          this.applyStatuses();
+        };
+      });
+      this.root.querySelector("[data-model-tree-toggle]").onclick = (event) => {
+        const panel = this.root.querySelector(".viewer-model-tree");
+        const collapsed = panel.classList.toggle("collapsed");
+        const button = event.currentTarget;
+        button.setAttribute("aria-expanded", String(!collapsed));
+        button.setAttribute("aria-label", `${collapsed ? "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C" : "\u0421\u043A\u0440\u044B\u0442\u044C"} \u0434\u0435\u0440\u0435\u0432\u043E \u043C\u043E\u0434\u0435\u043B\u0435\u0439`);
+        button.title = collapsed ? "\u0420\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0434\u0435\u0440\u0435\u0432\u043E \u043C\u043E\u0434\u0435\u043B\u0435\u0439" : "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0434\u0435\u0440\u0435\u0432\u043E \u043C\u043E\u0434\u0435\u043B\u0435\u0439";
+        button.querySelector(".tree-chevron").textContent = collapsed ? "\u203A" : "\u2039";
+      };
+      this.root.querySelector("[data-legend-toggle]").onclick = (event) => {
+        const panel = this.root.querySelector(".viewer-legend");
+        const collapsed = panel.classList.toggle("collapsed");
+        const button = event.currentTarget;
+        button.setAttribute("aria-expanded", String(!collapsed));
+        button.setAttribute("aria-label", `${collapsed ? "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C" : "\u0421\u043A\u0440\u044B\u0442\u044C"} \u043B\u0435\u0433\u0435\u043D\u0434\u0443 \u0441\u0442\u0430\u0442\u0443\u0441\u043E\u0432`);
+        button.title = collapsed ? "\u0420\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u043B\u0435\u0433\u0435\u043D\u0434\u0443" : "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u043B\u0435\u0433\u0435\u043D\u0434\u0443";
+        button.textContent = collapsed ? "\u2039" : "\u203A";
+      };
+      this.root.querySelector("[data-current-works-toggle]").onclick = (event) => {
+        const panel = this.root.querySelector(".viewer-current-works");
+        const collapsed = panel.classList.toggle("collapsed");
+        const button = event.currentTarget;
+        button.setAttribute("aria-expanded", String(!collapsed));
+        button.setAttribute("aria-label", `${collapsed ? "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C" : "\u0421\u043A\u0440\u044B\u0442\u044C"} \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B`);
+        button.title = collapsed ? "\u0420\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B" : "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0440\u0430\u0431\u043E\u0442\u044B";
+      };
+      this.root.querySelector(".viewer-current-work-list").onclick = (event) => {
+        const button = event.target.closest("[data-current-work]");
+        if (!button) return;
+        const code = button.dataset.currentWork;
+        this.expandedWorks.has(code) ? this.expandedWorks.delete(code) : this.expandedWorks.add(code);
+        this.renderCurrentWorks();
+      };
       this.root.querySelectorAll(".viewer-legend button[data-state]").forEach((button) => {
         button.onclick = () => {
           const state = button.dataset.state;
@@ -29079,7 +29142,8 @@ void main() {
     async loadModel(model, index) {
       const progress = this.root.querySelector("#viewer-load-progress");
       progress.textContent = `\u041C\u043E\u0434\u0435\u043B\u044C ${index + 1} \u0438\u0437 ${this.models.length}: ${model.name}`;
-      const response = await fetch(`/api/models/${encodeURIComponent(model.id)}/versions/${model.selected}/geometry`);
+      const hash = model.sourceHash ? `?hash=${encodeURIComponent(model.sourceHash)}` : "";
+      const response = await fetch(`/api/models/${encodeURIComponent(model.id)}/versions/${model.selected}/geometry${hash}`);
       if (!response.ok) {
         let message = `\u041E\u0448\u0438\u0431\u043A\u0430 ${response.status}`;
         try {
@@ -29104,6 +29168,7 @@ void main() {
         side: DoubleSide
       });
       const mesh = new Mesh(parsed.geometry, material);
+      mesh.visible = !this.hiddenModels.has(model.id);
       this.scene.add(mesh);
       this.combinedBounds.union(parsed.geometry.boundingBox);
       this.modelViews.push({
@@ -29120,14 +29185,18 @@ void main() {
       this.scheduleRender();
     }
     applyStatuses() {
-      const counts = { completed: 0, inProgress: 0, notStarted: 0, hidden: 0 };
+      const counts = { completed: 0, inProgress: 0, notStarted: 0, unlinked: 0 };
       for (const view of this.modelViews) {
+        const modelVisible = !this.hiddenModels.has(view.model.id);
+        view.mesh.visible = modelVisible;
+        if (!modelVisible) continue;
         let changed = false;
         for (const [expressId, ranges] of view.ranges) {
           const code = view.elementCodes.get(expressId);
           const work = code ? this.workMap.get(C.normalize(code)) : null;
-          let state = work ? statusKey(C.aggregateStatusAt(work.operations, this.selectedDate, this.version.date)) : "hidden";
-          counts[state] += 1;
+          const calculated = work ? statusKey(C.aggregateStatusAt(work.operations, this.selectedDate, this.version.date)) : "unlinked";
+          const state = calculated === "hidden" ? "unlinked" : calculated;
+          if (modelVisible) counts[state] += 1;
           const displayState = this.hiddenStates.has(state) ? "hidden" : state;
           if (view.states.get(expressId) === displayState) continue;
           view.states.set(expressId, displayState);
@@ -29142,12 +29211,57 @@ void main() {
         if (node) node.textContent = count.toLocaleString("ru-RU");
       }
       this.root.querySelector("#timeline-date-label").textContent = formatDate(this.selectedDate);
+      this.renderCurrentWorks();
       this.scheduleRender();
     }
-    updateStats() {
-      const elements = this.modelViews.reduce((sum, view) => sum + view.ranges.size, 0);
-      const triangles = this.modelViews.reduce((sum, view) => sum + view.triangles, 0);
-      this.root.querySelector(".viewer-help").textContent = `${elements.toLocaleString("ru-RU")} \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u043E\u0432 \xB7 ${Math.round(triangles).toLocaleString("ru-RU")} \u0442\u0440\u0435\u0443\u0433\u043E\u043B\u044C\u043D\u0438\u043A\u043E\u0432 \xB7 \u041B\u041A\u041C \u2014 \u0432\u0440\u0430\u0449\u0435\u043D\u0438\u0435 \xB7 \u041F\u041A\u041C \u2014 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0435\u043D\u0438\u0435 \xB7 \u043A\u043E\u043B\u0435\u0441\u043E \u2014 \u043C\u0430\u0441\u0448\u0442\u0430\u0431`;
+    visibleWorkCodes() {
+      const codes = /* @__PURE__ */ new Set();
+      for (const view of this.modelViews) {
+        if (this.hiddenModels.has(view.model.id)) continue;
+        for (const code of view.elementCodes.values()) {
+          const normalized = code ? C.normalize(code) : "";
+          if (normalized && this.workMap.has(normalized)) codes.add(normalized);
+        }
+      }
+      return codes;
+    }
+    renderCurrentWorks() {
+      const list = this.root.querySelector(".viewer-current-work-list");
+      if (!list) return;
+      const visibleCodes = this.visibleWorkCodes();
+      const sortDate = (work, status) => {
+        const values = work.operations.map((operation) => status === "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043E" ? operation.ff || operation.pf : operation.fs || operation.ps).filter(Boolean).sort();
+        return values.at(-1) || "";
+      };
+      const items = [...this.workMap.entries()].filter(([code]) => visibleCodes.has(code)).map(([normalized, work]) => {
+        const status = C.aggregateStatusAt(work.operations, this.selectedDate, this.version.date);
+        return { normalized, work, status, orderDate: sortDate(work, status) };
+      }).filter((item) => ["\u0412 \u0440\u0430\u0431\u043E\u0442\u0435", "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043E"].includes(item.status) && !this.hiddenStates.has(statusKey(item.status))).sort((left, right) => {
+        const stateOrder = Number(right.status === "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435") - Number(left.status === "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435");
+        return stateOrder || right.orderDate.localeCompare(left.orderDate) || left.work.code.localeCompare(right.work.code, "ru");
+      });
+      const sections = [
+        ["\u0412 \u0440\u0430\u0431\u043E\u0442\u0435", "inProgress"],
+        ["\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043E", "completed"]
+      ];
+      list.innerHTML = sections.map(([label, state]) => {
+        const works = items.filter((item) => item.status === label);
+        if (!works.length) return "";
+        return `<section class="viewer-current-work-section"><div class="viewer-current-work-section-head"><span>${label}</span><b>${works.length.toLocaleString("ru-RU")}</b></div>${works.map((item) => {
+          const expanded = this.expandedWorks.has(item.normalized);
+          const operations = expanded ? `<div class="viewer-current-operations">${item.work.operations.map((operation) => {
+            const operationStatus = C.operationStatusAt(operation, this.selectedDate, this.version.date);
+            const operationState = statusKey(operationStatus);
+            const rangeStart = operation.fs || operation.ps;
+            const rangeEnd = operation.ff || operation.pf;
+            return `<article><i class="${operationState}"></i><span><b title="${esc(operation.name)}">${esc(operation.name || "\u041E\u043F\u0435\u0440\u0430\u0446\u0438\u044F")}</b><small>${formatDate(rangeStart)} \u2014 ${formatDate(rangeEnd)}</small></span><em>${esc(operationStatus)}</em></article>`;
+          }).join("")}</div>` : "";
+          return `<div class="viewer-current-work ${expanded ? "expanded" : ""}"><button type="button" data-current-work="${esc(item.normalized)}" aria-expanded="${expanded}"><i class="${state}"></i><span><strong title="${esc(item.work.code)}">${esc(item.work.code)}</strong><small>${item.work.operations.length.toLocaleString("ru-RU")} ${item.work.operations.length === 1 ? "\u043E\u043F\u0435\u0440\u0430\u0446\u0438\u044F" : "\u043E\u043F\u0435\u0440\u0430\u0446\u0438\u0439"}</small></span><b>${expanded ? "\u2303" : "\u2304"}</b></button>${operations}</div>`;
+        }).join("")}</section>`;
+      }).join("");
+      if (!items.length) list.innerHTML = '<div class="viewer-current-work-empty">\u041D\u0430 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u0443\u044E \u0434\u0430\u0442\u0443 \u043D\u0435\u0442 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u043D\u044B\u0445 \u0440\u0430\u0431\u043E\u0442 \u0432 \u0440\u0430\u0431\u043E\u0442\u0435 \u0438\u043B\u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D\u043D\u044B\u0445.</div>';
+      const count = this.root.querySelector(".viewer-current-work-count");
+      if (count) count.textContent = items.length.toLocaleString("ru-RU");
     }
     setDate(date, syncRange = true) {
       if (!date) return;
@@ -29177,19 +29291,27 @@ void main() {
       this.root.querySelector(".timeline-plan").style.left = `${reportPercent}%`;
       this.root.querySelector(".timeline-plan").style.width = `${100 - reportPercent}%`;
       this.root.querySelector(".timeline-report").style.left = `${reportPercent}%`;
-      const ticks = [];
-      const count = Math.min(6, days + 1);
-      for (let index = 0; index < count; index += 1) {
-        const percent = count === 1 ? 0 : index / (count - 1);
-        const date = toIso(new Date(minTime + (maxTime - minTime) * percent));
-        ticks.push(`<span style="left:${percent * 100}%">${formatDate(date)}</span>`);
+      const ticks = [], grid = [];
+      let month = new Date(Date.UTC(iso(this.bounds.min).getUTCFullYear(), iso(this.bounds.min).getUTCMonth(), 1));
+      if (month.getTime() < minTime) month.setUTCMonth(month.getUTCMonth() + 1);
+      while (month.getTime() <= maxTime) {
+        const date = toIso(month);
+        const percent = (month.getTime() - minTime) / Math.max(maxTime - minTime, DAY) * 100;
+        grid.push(`<i style="left:${percent}%"></i>`);
+        ticks.push(`<span style="left:${percent}%">${formatMonth(date)}</span>`);
+        month = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1));
       }
+      this.root.querySelector(".timeline-grid").innerHTML = grid.join("");
       this.root.querySelector(".timeline-ticks").innerHTML = ticks.join("");
       this.root.querySelector("#timeline-date-label").textContent = formatDate(this.selectedDate);
     }
     focusTimeline() {
       const linkedOperations = [];
-      for (const [code, work] of this.workMap) if (this.linkedCodes.has(code)) linkedOperations.push(...work.operations);
+      const linkedCodes = /* @__PURE__ */ new Set();
+      for (const view of this.modelViews.filter((candidate) => !this.hiddenModels.has(candidate.model.id))) {
+        for (const code of view.elementCodes.values()) if (code && this.workMap.has(C.normalize(code))) linkedCodes.add(C.normalize(code));
+      }
+      for (const [code, work] of this.workMap) if (linkedCodes.has(code)) linkedOperations.push(...work.operations);
       const linked = C.timelineBounds(linkedOperations);
       if (!linked.min || !linked.max) return;
       this.stop();
@@ -29229,8 +29351,10 @@ void main() {
       if (action === "full") this.showFullTimeline();
     }
     fit(direction = "iso") {
-      if (this.combinedBounds.isEmpty()) return;
-      const sphere = this.combinedBounds.getBoundingSphere(new Sphere());
+      const visibleBounds = new Box3();
+      for (const view of this.modelViews) if (!this.hiddenModels.has(view.model.id)) visibleBounds.union(view.geometry.boundingBox);
+      if (visibleBounds.isEmpty()) return;
+      const sphere = visibleBounds.getBoundingSphere(new Sphere());
       const center = sphere.center;
       const radius = Math.max(sphere.radius, 1);
       const vectors = {
@@ -29248,7 +29372,7 @@ void main() {
       this.controls.update();
       if (!this.grid) {
         this.grid = new GridHelper(radius * 4, 48, 11977158, 14015968);
-        this.grid.position.set(center.x, this.combinedBounds.min.y - radius * 4e-3, center.z);
+        this.grid.position.set(center.x, visibleBounds.min.y - radius * 4e-3, center.z);
         this.scene.add(this.grid);
       }
       this.scheduleRender();
@@ -29258,7 +29382,7 @@ void main() {
       button.textContent = "\u2161";
       button.setAttribute("aria-label", "\u041F\u043E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043D\u0430 \u043F\u0430\u0443\u0437\u0443");
       const tick = () => {
-        const next = offsetDays(this.selectedDate, this.step);
+        const next = this.step === "month" ? offsetMonths(this.selectedDate) : offsetDays(this.selectedDate, this.step);
         if (next > this.bounds.max) {
           this.stop();
           return;

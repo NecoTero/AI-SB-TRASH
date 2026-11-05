@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Снимок статусной модели</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="viewer.css">
+  <link rel="stylesheet" href="viewer-layout.css?v=20261104-10">
+  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef2f3}</style>
+</head>
+<body>
+  <div id="viewer-root"></div>
+  <script src="data.js?v=20261103-1"></script>
+  <script src="core.js?v=20261103-1"></script>
+  <script src="viewer.bundle.js?v=20261104-8"></script>
+  <script>
+    window.__captureReady = false;
+    window.__captureError = null;
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    (async () => {
+      try {
+        const catalog = await (await fetch('/api/models', { cache: 'no-store' })).json();
+        const meta = catalog.models.find(model => model.name === '1816_PSK_RD_KR_M3_R24.ifc') || catalog.models.at(-1);
+        if (!meta) throw new Error('IFC-модель для снимка не найдена');
+        const version = meta.versions.find(item => item.processed)?.n || meta.versions[0].n;
+        const started = await fetch('/api/models/process/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selections: [{ id: meta.id, version }] }),
+        });
+        if (!started.ok) throw new Error('Не удалось запустить подготовку модели');
+        const { jobId } = await started.json();
+        let job;
+        for (let attempt = 0; attempt < 600; attempt += 1) {
+          await wait(250);
+          job = await (await fetch(`/api/models/process/${encodeURIComponent(jobId)}`, { cache: 'no-store' })).json();
+          if (job.status === 'done') break;
+          if (job.status === 'error') throw new Error(job.error || 'Ошибка подготовки модели');
+        }
+        const result = job?.results?.[0];
+        if (!result?.processed) throw new Error('Модель не подготовлена');
+        const model = {
+          ...meta,
+          selected: version,
+          elements: result.elements || [],
+          processedVersion: version,
+          sourceHash: result.sourceHash || null,
+          schema: result.schema || null,
+        };
+        const reportDate = '2026-09-27';
+        const workValues = new Map();
+        for (const element of model.elements) {
+          const values = {};
+          for (const trait of DEMO.traits) values[trait.id] = Core.readTrait(element.props, trait);
+          if (!values.kfo) continue;
+          const code = Core.normalize(Core.codeOf(values));
+          if (!workValues.has(code)) workValues.set(code, values);
+        }
+        const operations = [...workValues.values()].map((values, index) => {
+          const phase = index % 3;
+          return {
+            ...values,
+            name: `Строительно-монтажные работы · ${values.kfo}`,
+            ps: phase === 0 ? '2026-08-10' : phase === 1 ? '2026-09-01' : '2026-10-01',
+            pf: phase === 0 ? '2026-09-10' : phase === 1 ? '2026-10-15' : '2026-11-15',
+            fs: phase === 0 ? '2026-08-12' : phase === 1 ? '2026-09-05' : null,
+            ff: phase === 0 ? '2026-09-08' : null,
+          };
+        });
+        SBViewer.open({
+          version: { n: 3, date: reportDate, ops: operations },
+          models: [model],
+          traits: DEMO.traits,
+        });
+        for (let attempt = 0; attempt < 600; attempt += 1) {
+          await wait(250);
+          const loading = document.querySelector('.viewer-loading');
+          if (loading?.classList.contains('error')) throw new Error(loading.textContent.trim());
+          if (loading?.hidden) {
+            await wait(1200);
+            window.__captureReady = true;
+            return;
+          }
+        }
+        throw new Error('Viewer не успел подготовить кадр');
+      } catch (error) {
+        window.__captureError = String(error?.message || error);
+      }
+    })();
+  </script>
+</body>
+</html>
